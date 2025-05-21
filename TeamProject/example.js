@@ -30,10 +30,6 @@ let dragging = false;
 let lastX = 0;
 let lastY = 0;
 
-let angle = radians(-20);
-let dx = Math.cos(angle);
-let dy = Math.sin(angle);
-
 let viewMatrixLoc, projectionMatrixLoc;
 
 // 애니메이션 변수
@@ -100,6 +96,13 @@ function createNode(transform, renderFunc, sibling, child) {
 
 function initNodes(id) {
   let m = mat4();
+  let s = radians(-90);
+  let offset = 0.25;
+
+  let rotationAboutTop = mult(
+    translate(0, offset, 0),
+    mult(rotateZ(s), translate(0, -offset, 0))
+  );
 
   switch (id) {
     case torsoId:
@@ -110,7 +113,7 @@ function initNodes(id) {
       figure[headId] = createNode(m, head, rightUpperArmId, null);
       break;
     case rightUpperArmId:
-      m = mult(rotateZ(50), translate(0.2, 0.2, 0.0));
+      m = mult(translate(0.8, 0.2, 0.0), rotationAboutTop);
       figure[rightUpperArmId] = createNode(
         m,
         rightUpperArm,
@@ -127,7 +130,8 @@ function initNodes(id) {
       figure[swordId] = createNode(m, sword, null, null);
       break;
     case leftUpperArmId:
-      m = mult(translate(-2 * dx, -2 * dy, 0.0), rotateZ(-50));
+      // 전체 위치로 이동 (몸에서 떨어뜨리기)
+      m = mult(translate(-0.8, 0.2, 0.0), rotationAboutTop);
       figure[leftUpperArmId] = createNode(
         m,
         leftUpperArm,
@@ -258,7 +262,7 @@ function head() {
   drawBox();
 }
 function leftUpperArm() {
-  modelViewMatrix = mult(modelViewMatrix, scalem(0.5, 0.5, 0.5));
+  modelViewMatrix = mult(modelViewMatrix, scalem(0.3, 0.4, 0.3));
   drawBox();
 }
 function leftLowerArm() {
@@ -266,7 +270,7 @@ function leftLowerArm() {
   drawBox();
 }
 function rightUpperArm() {
-  modelViewMatrix = mult(modelViewMatrix, scalem(0.2, 0.3, 0.4));
+  modelViewMatrix = mult(modelViewMatrix, scalem(0.3, 0.4, 0.3));
   drawBox();
 }
 function rightLowerArm() {
@@ -274,7 +278,7 @@ function rightLowerArm() {
   drawBox();
 }
 function sword() {
-  modelViewMatrix = mult(modelViewMatrix, scalem(0.05, 0.5, 0.05));
+  modelViewMatrix = mult(modelViewMatrix, scalem(0.3, 1, 0.3));
   drawBox();
 }
 function leftUpperLeg() {
