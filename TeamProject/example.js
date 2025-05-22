@@ -1,4 +1,4 @@
-"use strict";
+'use strict';
 
 var gl, program;
 var modelMatrixLoc;
@@ -53,7 +53,7 @@ const cubeIndices = [
 ];
 
 window.onload = function init() {
-  const canvas = document.getElementById("gl-canvas");
+  const canvas = document.getElementById('gl-canvas');
   gl = WebGLUtils.setupWebGL(canvas);
   if (!gl) alert("WebGL isn't available");
 
@@ -63,23 +63,23 @@ window.onload = function init() {
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-  program = initShaders(gl, "vertex-shader", "fragment-shader");
+  program = initShaders(gl, 'vertex-shader', 'fragment-shader');
   gl.useProgram(program);
-  modelMatrixLoc = gl.getUniformLocation(program, "modelMatrix");
-  viewMatrixLoc = gl.getUniformLocation(program, "viewMatrix");
-  projectionMatrixLoc = gl.getUniformLocation(program, "projectionMatrix");
+  modelMatrixLoc = gl.getUniformLocation(program, 'modelMatrix');
+  viewMatrixLoc = gl.getUniformLocation(program, 'viewMatrix');
+  projectionMatrixLoc = gl.getUniformLocation(program, 'projectionMatrix');
 
   for (let i = 0; i < numNodes; i++) initNodes(i);
 
   render();
 
-  canvas.addEventListener("mousedown", (e) => {
+  canvas.addEventListener('mousedown', (e) => {
     dragging = true;
     lastX = e.clientX;
     lastY = e.clientY;
   });
-  canvas.addEventListener("mouseup", () => (dragging = false));
-  canvas.addEventListener("mousemove", (e) => {
+  canvas.addEventListener('mouseup', () => (dragging = false));
+  canvas.addEventListener('mousemove', (e) => {
     if (!dragging) return;
     let dx = e.clientX - lastX;
     let dy = e.clientY - lastY;
@@ -96,13 +96,7 @@ function createNode(transform, renderFunc, sibling, child) {
 
 function initNodes(id) {
   let m = mat4();
-  let s = radians(-90);
-  let offset = 0.25;
-
-  let rotationAboutTop = mult(
-    translate(0, offset, 0),
-    mult(rotateZ(s), translate(0, -offset, 0))
-  );
+  let rotationAboutTop;
 
   switch (id) {
     case torsoId:
@@ -113,7 +107,8 @@ function initNodes(id) {
       figure[headId] = createNode(m, head, rightUpperArmId, null);
       break;
     case rightUpperArmId:
-      m = mult(translate(0.8, 0.2, 0.0), rotationAboutTop);
+      rotationAboutTop = rotateAroundTop(1000, 0.25);
+      m = mult(translate(0.6, 0.2, 0.0), rotationAboutTop);
       figure[rightUpperArmId] = createNode(
         m,
         rightUpperArm,
@@ -126,12 +121,12 @@ function initNodes(id) {
       figure[rightLowerArmId] = createNode(m, rightLowerArm, null, swordId);
       break;
     case swordId:
-      m = translate(0.0, -0.25, 0.0);
+      m = translate(0.0, -1, 0.0);
       figure[swordId] = createNode(m, sword, null, null);
       break;
     case leftUpperArmId:
-      // 전체 위치로 이동 (몸에서 떨어뜨리기)
-      m = mult(translate(-0.8, 0.2, 0.0), rotationAboutTop);
+      rotationAboutTop = rotateAroundTop(-1000, 0.25);
+      m = mult(translate(-0.6, 0.2, 0.0), rotationAboutTop);
       figure[leftUpperArmId] = createNode(
         m,
         leftUpperArm,
@@ -214,14 +209,14 @@ function drawAxis() {
   const aBuffer = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, aBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, flatten(axisVertices), gl.STATIC_DRAW);
-  const vPos = gl.getAttribLocation(program, "vPosition");
+  const vPos = gl.getAttribLocation(program, 'vPosition');
   gl.vertexAttribPointer(vPos, 3, gl.FLOAT, false, 0, 0);
   gl.enableVertexAttribArray(vPos);
 
   const cBuffer = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, cBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, flatten(colors), gl.STATIC_DRAW);
-  const vColor = gl.getAttribLocation(program, "vColor");
+  const vColor = gl.getAttribLocation(program, 'vColor');
   gl.vertexAttribPointer(vColor, 3, gl.FLOAT, false, 0, 0);
   gl.enableVertexAttribArray(vColor);
 
@@ -236,7 +231,7 @@ function drawBox() {
   gl.bindBuffer(gl.ARRAY_BUFFER, vBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, flatten(cubeVertices), gl.STATIC_DRAW);
 
-  const vPosition = gl.getAttribLocation(program, "vPosition");
+  const vPosition = gl.getAttribLocation(program, 'vPosition');
   gl.vertexAttribPointer(vPosition, 4, gl.FLOAT, false, 0, 0);
   gl.enableVertexAttribArray(vPosition);
 
@@ -334,4 +329,12 @@ function render() {
   traverse(torsoId);
 
   requestAnimFrame(render);
+}
+
+function rotateAroundTop(angleDeg, offset) {
+  const theta = radians(angleDeg);
+  return mult(
+    translate(0, offset, 0),
+    mult(rotateZ(theta), translate(0, -offset, 0))
+  );
 }
