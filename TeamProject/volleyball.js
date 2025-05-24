@@ -432,6 +432,23 @@ function interpolatePose(t) {
   return p;
 }
 
+const HIT_T = 0.5; // 어깨가 -160° 되는 시점 (60% 지점)
+const BALL_START = [0.6, 2.4, 0.4]; // 손·머리 쪽 초기 위치
+const BALL_END = [8, 1.0, 0.2]; // 오른쪽 앞·아래 (마음대로 조정)
+
+function interpolateBall(t) {
+  // t < HIT_T  →  그대로 손 근처에 고정
+  if (t < HIT_T) return BALL_START;
+
+  // t ≥ HIT_T  →  0~1 로 정규화한 s 로 직선 보간
+  const s = (t - HIT_T) / (1 - HIT_T); // 0→1
+  return [
+    BALL_START[0] + (BALL_END[0] - BALL_START[0]) * s,
+    BALL_START[1] + (BALL_END[1] - BALL_START[1]) * s,
+    BALL_START[2] + (BALL_END[2] - BALL_START[2]) * s,
+  ];
+}
+
 /*=======================
    Camera interaction
 =======================*/
@@ -540,6 +557,13 @@ function render(now) {
 
   // 캐릭터 그릴 때 pose 값 넘기기
   character(pose); // ✨(아래 4단계 참고)
+
+  stk.push();
+  stk.loadIdentity();
+  const ballPos = interpolateBall(t);
+  mat4.translate(stk.current, stk.current, ballPos);
+  drawBall();
+  stk.pop();
 
   requestAnimationFrame(render);
 }
