@@ -392,16 +392,16 @@ function arm(side, shoulder, elbow, customSX) {
   stk.pop();
   return handModel;
 }
-function leg(side, hip, knee) {
+function leg(side, hip, knee, customSX = 0) {
   const sg = side === "left" ? -1 : 1;
   const hY = -0.75,
-    hX = 0.25,
+    hX = customSX,
     hZ = 0.25,
     upper = 0.8,
     lower = 0.7,
     j = 0.125;
   stk.push();
-  mat4.translate(stk.current, stk.current, [sg * hX, hY, sg * hZ]);
+  mat4.translate(stk.current, stk.current, [hX, hY, sg * hZ]);
   mat4.rotate(stk.current, stk.current, hip, [0, 0, 1]);
   stk.push();
   mat4.scale(stk.current, stk.current, [0.25, 0.25, 0.25]);
@@ -534,8 +534,8 @@ function character(p) {
     p.RIGHT_ELBOW,
     p.RIGHT_ARM_SX
   );
-  leg("left", p.LEFT_HIP, p.LEFT_KNEE);
-  leg("right", p.RIGHT_HIP, p.RIGHT_KNEE);
+  leg("left", p.LEFT_HIP, p.LEFT_KNEE, -p.RIGHT_HIP_SX);
+  leg("right", p.RIGHT_HIP, p.RIGHT_KNEE, p.RIGHT_HIP_SX);
   stk.pop();
 
   return { leftHandM, rightHandM };
@@ -571,7 +571,7 @@ const deg = (a) => (a * Math.PI) / 180;
 // const LEFT_KNEE = deg(-10);
 // const RIGHT_KNEE = deg(-70);
 
-const startPose = {
+const endPose = {
   BODY_LEAN_X: deg(0),
   BODY_LEAN_Y: deg(0),
   BODY_LEAN_Z: deg(0),
@@ -588,26 +588,27 @@ const startPose = {
   RIGHT_KNEE: deg(-55),
 };
 
-const endPose = {
+const startPose = {
   BODY_LEAN_X: deg(0),
   BODY_LEAN_Y: deg(0),
-  BODY_LEAN_Z: deg(-20),
+  BODY_LEAN_Z: deg(0),
   HEAD_TILT: deg(-15),
 
-  LEFT_SHOULDER: deg(0),
-  RIGHT_SHOULDER: deg(-310),
-  LEFT_ELBOW: deg(70),
-  RIGHT_ELBOW: deg(0),
+  LEFT_SHOULDER: deg(20),
+  RIGHT_SHOULDER: deg(20),
+  LEFT_ELBOW: deg(140),
+  RIGHT_ELBOW: deg(140),
 
-  LEFT_HIP: deg(60),
-  RIGHT_HIP: deg(60),
-  LEFT_KNEE: deg(-10),
-  RIGHT_KNEE: deg(-70),
+  LEFT_HIP: deg(0),
+  RIGHT_HIP: deg(0),
+  LEFT_KNEE: deg(0),
+  RIGHT_KNEE: deg(0),
 };
 
-const SX_START = -0.2; // 처음엔 몸 안쪽
-const SX_END = 0.3; // –160° 도달 시 바깥쪽
-const SHOULDER_LIMIT = deg(-160);
+const ARM_SX_START = 0.2; // 처음엔 몸 안쪽
+const ARM_SX_END = -0.2; // –160° 도달 시 바깥쪽
+const LEG_SX_START = 0;
+const LEG_SX_END = 0.2;
 
 const lerp = (a, b, t) => a + (b - a) * t;
 
@@ -616,37 +617,12 @@ function interpolatePose(t) {
   const p = {};
   for (const k in startPose) p[k] = lerp(startPose[k], endPose[k], t);
 
-  const sh = p.RIGHT_SHOULDER;
+  p.RIGHT_ELBOW = lerp(startPose.RIGHT_ELBOW, endPose.RIGHT_ELBOW, t);
+  p.LEFT_ELBOW = lerp(startPose.LEFT_ELBOW, endPose.LEFT_ELBOW, t);
+  p.RIGHT_ARM_SX = lerp(ARM_SX_START, ARM_SX_END, t);
 
-  if (sh > SHOULDER_LIMIT) {
-    const k =
-      (sh - startPose.RIGHT_SHOULDER) /
-      (SHOULDER_LIMIT - startPose.RIGHT_SHOULDER);
-    p.RIGHT_ELBOW = lerp(startPose.RIGHT_ELBOW, 0, k);
-
-    p.RIGHT_ARM_SX = lerp(SX_START, SX_END, k);
-  } else {
-    p.RIGHT_ELBOW = 0;
-    p.RIGHT_ARM_SX = SX_END;
-  }
+  p.RIGHT_HIP_SX = lerp(LEG_SX_START, LEG_SX_END, t);
   return p;
-}
-
-const HIT_T = 0.5; // 어깨가 -160° 되는 시점 (60% 지점)
-const BALL_START = [0.6, 2.4, 0.4]; // 손·머리 쪽 초기 위치
-const BALL_END = [8, 1.0, 0.2]; // 오른쪽 앞·아래 (마음대로 조정)
-
-function interpolateBall(t) {
-  // t < HIT_T  →  그대로 손 근처에 고정
-  if (t < HIT_T) return BALL_START;
-
-  // t ≥ HIT_T  →  0~1 로 정규화한 s 로 직선 보간
-  const s = (t - HIT_T) / (1 - HIT_T); // 0→1
-  return [
-    BALL_START[0] + (BALL_END[0] - BALL_START[0]) * s,
-    BALL_START[1] + (BALL_END[1] - BALL_START[1]) * s,
-    BALL_START[2] + (BALL_END[2] - BALL_START[2]) * s,
-  ];
 }
 
 /*=======================
@@ -720,7 +696,7 @@ function resize() {
 // }
 
 const DURATION = 1000; // 1초에 목표 포즈 도달
-const LOOP = false; // true 면 계속 왕복, false 면 1회 후 멈춤
+const LOOP = true; // true 면 계속 왕복, false 면 1회 후 멈춤
 let startTime = null;
 
 function render(now) {
@@ -729,15 +705,15 @@ function render(now) {
 
   // --- t 계산 -----------------------------
   let t = elapsed / DURATION;
-  // if (LOOP) {
-  //   // ping-pong: 0→1→0→1 …
-  //   const cycle = Math.floor(t);
-  //   t = t - cycle; // 0~1 사이
-  //   if (cycle % 2 === 1) t = 1 - t; // 홀수 cycle 때 역방향
-  // } else {
-  //   t = Math.min(t, 1); // 0~1 clamp
-  // }
-  t = 0;
+  if (LOOP) {
+    // ping-pong: 0→1→0→1 …
+    const cycle = Math.floor(t);
+    t = t - cycle; // 0~1 사이
+    if (cycle % 2 === 1) t = 1 - t; // 홀수 cycle 때 역방향
+  } else {
+    t = Math.min(t, 1); // 0~1 clamp
+  }
+  // t = 1;
 
   // --- pose 보간 --------------------------
   const pose = interpolatePose(t);
