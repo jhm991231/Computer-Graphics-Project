@@ -333,6 +333,7 @@ const drawBall = () => drawVAO(ballVAO);
 function body() {
   stk.push();
   mat4.scale(stk.current, stk.current, [0.5, 1.5, 0.25]);
+  mat4.translate(stk.current, stk.current, [0, 0, 0]);
   drawCylinder();
   stk.pop();
 }
@@ -506,25 +507,6 @@ const deg = (a) => (a * Math.PI) / 180;
 // const LEFT_KNEE = deg(-10);
 // const RIGHT_KNEE = deg(-70);
 
-const endPose = {
-  BODY_LEAN_X: deg(0),
-  BODY_LEAN_Y: deg(0),
-  BODY_LEAN_Z: deg(0),
-  HEAD_TILT: deg(-15),
-
-  LEFT_SHOULDER_XZ: deg(90),
-  RIGHT_SHOULDER_XZ: deg(-90),
-  LEFT_SHOULDER_Z: deg(0),
-  RIGHT_SHOULDER_Z: deg(0),
-  LEFT_ELBOW: deg(0),
-  RIGHT_ELBOW: deg(0),
-
-  LEFT_HIP: deg(-40),
-  RIGHT_HIP: deg(50),
-  LEFT_KNEE: deg(-10),
-  RIGHT_KNEE: deg(-55),
-};
-
 const startPose = {
   BODY_LEAN_X: deg(0),
   BODY_LEAN_Y: deg(0),
@@ -544,23 +526,88 @@ const startPose = {
   RIGHT_KNEE: deg(-40),
 };
 
+const middlePose = {
+  BODY_LEAN_X: deg(0),
+  BODY_LEAN_Y: deg(0),
+  BODY_LEAN_Z: deg(-20),
+  HEAD_TILT: deg(-15),
+
+  LEFT_SHOULDER_XZ: deg(120), // 왼팔 뒤로
+  RIGHT_SHOULDER_XZ: deg(-30), // 오른팔 앞으로
+  LEFT_SHOULDER_Z: deg(0), // 들기/내리기 없음
+  RIGHT_SHOULDER_Z: deg(0),
+  LEFT_ELBOW: deg(0),
+  RIGHT_ELBOW: deg(0),
+
+  LEFT_HIP: deg(40),
+  RIGHT_HIP: deg(41),
+  LEFT_KNEE: deg(-20),
+  RIGHT_KNEE: deg(0),
+};
+
+const endPose = {
+  BODY_LEAN_X: deg(0),
+  BODY_LEAN_Y: deg(0),
+  BODY_LEAN_Z: deg(-20),
+  HEAD_TILT: deg(-15),
+
+  LEFT_SHOULDER_XZ: deg(20), // 왼팔 뒤로
+  RIGHT_SHOULDER_XZ: deg(-10), // 오른팔 앞으로
+  LEFT_SHOULDER_Z: deg(50), // 들기/내리기 없음
+  RIGHT_SHOULDER_Z: deg(-20),
+  LEFT_ELBOW: deg(20),
+  RIGHT_ELBOW: deg(40),
+
+  LEFT_HIP: deg(40),
+  RIGHT_HIP: deg(100),
+  LEFT_KNEE: deg(-20),
+  RIGHT_KNEE: deg(0),
+};
+
 const ARM_SX_START = -0.2; // 처음엔 몸 안쪽
 const ARM_SX_END = -0.2; // –160° 도달 시 바깥쪽
-const LEG_SX_START = 0;
-const LEG_SX_END = 0.2;
+const LEG_SX_START = -0.2;
+const LEG_SX_END = 0;
 
 const lerp = (a, b, t) => a + (b - a) * t;
 
-// t 를 받아서 “현재 pose” 객체를 반환
+// // t 를 받아서 “현재 pose” 객체를 반환
+// function interpolatePose(t) {
+//   const p = {};
+//   for (const k in startPose) p[k] = lerp(startPose[k], middlePose[k], t);
+
+//   p.RIGHT_ELBOW = lerp(startPose.RIGHT_ELBOW, middlePose.RIGHT_ELBOW, t);
+//   p.LEFT_ELBOW = lerp(startPose.LEFT_ELBOW, middlePose.LEFT_ELBOW, t);
+//   p.RIGHT_ARM_SX = lerp(ARM_SX_START, ARM_SX_END, t);
+
+//   p.RIGHT_HIP_SX = lerp(LEG_SX_START, LEG_SX_END, t);
+//   return p;
+// }
+
 function interpolatePose(t) {
   const p = {};
-  for (const k in startPose) p[k] = lerp(startPose[k], endPose[k], t);
 
-  p.RIGHT_ELBOW = lerp(startPose.RIGHT_ELBOW, endPose.RIGHT_ELBOW, t);
-  p.LEFT_ELBOW = lerp(startPose.LEFT_ELBOW, endPose.LEFT_ELBOW, t);
-  p.RIGHT_ARM_SX = lerp(ARM_SX_START, ARM_SX_END, t);
+  // ─ 구간 구분 ──────────────────────────
+  let from, to, u;
+  if (t < 0.5) {
+    // 1단계 : start → middle
+    from = startPose;
+    to = middlePose;
+    u = t / 0.5; // 0~1
+  } else {
+    // 2단계 : middle → end
+    from = middlePose;
+    to = endPose;
+    u = (t - 0.5) / 0.5; // 0~1
+  }
 
+  // ─ 공통 항목 전부 lerp ────────────────
+  for (const k in from) p[k] = lerp(from[k], to[k], u);
+
+  // ▸ 필요하면 따로 처리하는 값 (여기서는 예시로 두 개만)
+  p.RIGHT_ARM_SX = lerp(ARM_SX_START, ARM_SX_END, t); // 계속 같은 값이면 생략 가능
   p.RIGHT_HIP_SX = lerp(LEG_SX_START, LEG_SX_END, t);
+
   return p;
 }
 
@@ -638,6 +685,9 @@ const DURATION = 1000; // 1초에 목표 포즈 도달
 const LOOP = true; // true 면 계속 왕복, false 면 1회 후 멈춤
 let startTime = null;
 
+const BALL_START = [0.6, -2.3, 0.35]; // 처음 위치
+const BALL_END = [10, 3.0, -6]; // 화면 안쪽(-Z)으로 날아감
+
 function render(now) {
   if (!startTime) startTime = now;
   const elapsed = now - startTime;
@@ -652,7 +702,6 @@ function render(now) {
   } else {
     t = Math.min(t, 1); // 0~1 clamp
   }
-  t = 0;
 
   // --- pose 보간 --------------------------
   const pose = interpolatePose(t);
@@ -674,9 +723,33 @@ function render(now) {
   // 캐릭터 그릴 때 pose 값 넘기기
   character(pose); // ✨(아래 4단계 참고)
 
+  const ballT = Math.max(0, t - 0.5) * 2; // 0~1   (0.5 시점부터 움직이기 시작)
+  const base = [
+    lerp(BALL_START[0], BALL_END[0], ballT),
+    lerp(BALL_START[1], BALL_END[1], ballT),
+    lerp(BALL_START[2], BALL_END[2], ballT),
+  ];
+
+  /* ── 휨 방향 벡터 n 구하기 ──
+   d = END - START  의 (XZ) 평면에 수직 =>  (-dz, 0, dx)   */
+  const dx = BALL_END[0] - BALL_START[0];
+  const dz = BALL_END[2] - BALL_START[2];
+  const len = Math.hypot(dx, dz);
+  const n = len === 0 ? [1, 0, 0] : [-dz / len, 0, dx / len]; // 좌측으로 휨
+  const CURVE_AMPL = 0.6; // 얼마나 많이 휘어질지
+  const s = Math.sin(Math.PI * ballT); // 0→1→0
+
+  // base + 휨오프셋
+  const ballPos = [
+    base[0] + n[0] * CURVE_AMPL * s,
+    base[1] + n[1] * CURVE_AMPL * s, // 거의 0
+    base[2] + n[2] * CURVE_AMPL * s,
+  ];
+
+  // ② 그릴 때
   stk.push();
-  stk.loadIdentity(); // 월드 원점부터
-  mat4.translate(stk.current, stk.current, [0.25, -2.3, 0.2]); // ← 원하는 자리로 옮김
+  stk.loadIdentity();
+  mat4.translate(stk.current, stk.current, ballPos);
   drawBall();
   stk.pop();
 
