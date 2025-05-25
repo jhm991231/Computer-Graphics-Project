@@ -157,6 +157,86 @@ function cylinder(rt, rb, h, radSeg, hSeg, open) {
     idx: new Uint16Array(idx),
   };
 }
+function plate(rOut = 0.6, rIn = 0.08, t = 0.1, seg = 48) {
+  /* annulus + 옆면을 모두 가진 단일 VAO 를 돌려준다. */
+  const v = [],
+    n = [],
+    idx = [];
+  const h = t * 0.5;
+  const TAU = Math.PI * 2;
+
+  // 1) 윗면 (노멀 +Y)
+  for (let i = 0; i <= seg; ++i) {
+    const th = (i / seg) * TAU,
+      cs = Math.cos(th),
+      sn = Math.sin(th);
+    // 바깥 원 → 안쪽 원 순으로 삼각형 팬
+    v.push(cs * rOut, h, sn * rOut);
+    n.push(0, 1, 0);
+    v.push(cs * rIn, h, sn * rIn);
+    n.push(0, 1, 0);
+  }
+  const topStart = 0,
+    topCount = (seg + 1) * 2;
+
+  // 2) 아랫면 (노멀 –Y)
+  for (let i = 0; i <= seg; ++i) {
+    const th = (i / seg) * TAU,
+      cs = Math.cos(th),
+      sn = Math.sin(th);
+    v.push(cs * rOut, -h, sn * rOut);
+    n.push(0, -1, 0);
+    v.push(cs * rIn, -h, sn * rIn);
+    n.push(0, -1, 0);
+  }
+  const botStart = topCount,
+    botCount = (seg + 1) * 2;
+
+  // 3) 바깥 옆면 (노멀 XZ 방향)
+  for (let i = 0; i <= seg; ++i) {
+    const th = (i / seg) * TAU,
+      cs = Math.cos(th),
+      sn = Math.sin(th);
+    // 위 → 아래
+    v.push(cs * rOut, h, sn * rOut);
+    n.push(cs, 0, sn);
+    v.push(cs * rOut, -h, sn * rOut);
+    n.push(cs, 0, sn);
+  }
+  const outStart = botStart + botCount,
+    outCount = (seg + 1) * 2;
+
+  // 4) 안쪽(구멍) 옆면 (노멀 –XZ)
+  for (let i = 0; i <= seg; ++i) {
+    const th = (i / seg) * TAU,
+      cs = Math.cos(th),
+      sn = Math.sin(th);
+    v.push(cs * rIn, h, sn * rIn);
+    n.push(-cs, 0, -sn);
+    v.push(cs * rIn, -h, sn * rIn);
+    n.push(-cs, 0, -sn);
+  }
+  const inStart = outStart + outCount,
+    inCount = (seg + 1) * 2;
+
+  /* ---- 인덱스 생성 : 각 스트립을 TRIANGLE_STRIP 으로 연결 ---- */
+  function pushStrip(start, count) {
+    for (let i = 0; i < count - 2; ++i) {
+      if (i & 1) idx.push(start + i + 1, start + i, start + i + 2);
+      else idx.push(start + i, start + i + 1, start + i + 2);
+    }
+  }
+  pushStrip(topStart, topCount);
+  pushStrip(botStart, botCount);
+  pushStrip(outStart, outCount);
+  pushStrip(inStart, inCount);
+
+  return {
+    v: new Float32Array(v),
+    n: new Float32Array(n),
+    idx: new Uint16Array(idx),
+  };
+}
 function cube() {
   const p = [
     -0.5, -0.5, 0.5, 0.5, -0.5, 0.5, 0.5, 0.5, 0.5, -0.5, 0.5, 0.5, -0.5, -0.5,
@@ -219,7 +299,10 @@ function setup(geo) {
 =======================*/
 const sphereVAO = setup(sphere(0.5, 16, 32));
 const cylVAO = setup(cylinder(0.5, 0.5, 1.0, 16, 1));
-const ballVAO = setup(sphere(0.25, 16, 32));
+const barVAO = setup(cylinder(0.05, 0.05, 2.0, 32, 1));
+const plateVAO = setup(plate(0.6, 0.08, 0.1, 48));
+const plateOutVAO = setup(cylinder(0.4, 0.4, 0.1, 32, 1));
+const plateInVAO = setup(cylinder(0.25, 0.25, 0.1, 32, 1));
 
 const uMVP = gl.getUniformLocation(program, "uModelViewProjection");
 const uMV = gl.getUniformLocation(program, "uModelView");
@@ -241,7 +324,10 @@ function drawVAO(vao) {
 }
 const drawSphere = () => drawVAO(sphereVAO);
 const drawCylinder = () => drawVAO(cylVAO);
-const drawBall = () => drawVAO(ballVAO);
+const drawBar = () => drawVAO(barVAO);
+const drawPlate = () => drawVAO(plateVAO);
+const drawPlateOuter = () => drawVAO(plateOutVAO);
+const drawPlateInner = () => drawVAO(plateInVAO);
 
 /*=======================
    Body parts
@@ -260,16 +346,16 @@ function head(tilt) {
   stk.pop();
 }
 
-function arm(side, shoulder, elbow, customSX = 0.3) {
+function arm(side, shoulder, elbow, customSX) {
   const sg = side === "left" ? -1 : 1;
   const sY = 0.5,
     sX = customSX,
-    sZ = 0.3,
+    sZ = 0.5,
     upper = 0.6,
     lower = 0.6,
     j = 0.1;
   stk.push();
-  mat4.translate(stk.current, stk.current, [sg * sX, sY, sg * sZ]);
+  mat4.translate(stk.current, stk.current, [sX, sY, sg * sZ]);
   mat4.rotate(stk.current, stk.current, shoulder, [0, 0, 1]);
   // shoulder sphere
   stk.push();
@@ -295,12 +381,21 @@ function arm(side, shoulder, elbow, customSX = 0.3) {
   mat4.scale(stk.current, stk.current, [0.12, lower, 0.12]);
   drawCylinder();
   stk.pop();
+  /* ── 손(구) ─────────────────────── */
+  stk.push();
+  mat4.translate(stk.current, stk.current, [0, -(j + lower + j * 0.8), 0]);
+  mat4.scale(stk.current, stk.current, [0.15, 0.15, 0.15]);
+  drawSphere();
+  // ── 손의 월드 행렬을 복사해서 챙겨 둔다
+  const handModel = mat4.clone(stk.getCurrentMatrix());
   stk.pop();
+  stk.pop();
+  return handModel;
 }
 function leg(side, hip, knee) {
   const sg = side === "left" ? -1 : 1;
   const hY = -0.75,
-    hX = 0,
+    hX = 0.25,
     hZ = 0.25,
     upper = 0.8,
     lower = 0.7,
@@ -330,15 +425,120 @@ function leg(side, hip, knee) {
   stk.pop();
   stk.pop();
 }
+
+// function drawBarbell() {
+//   stk.push();
+//   const barLength = 2;
+//   // 봉
+//   stk.scale([0.05, barLength, 0.05]);
+//   drawCylinder(); // 기존 봉용 geometry 사용
+//   stk.pop();
+
+//   // 왼쪽 원판
+//   stk.push();
+//   stk.translate([0, barLength / 2, 0]);
+//   drawPlate();
+//   stk.pop();
+
+//   // 오른쪽 원판
+//   stk.push();
+//   stk.translate([0, -barLength / 2, 0]);
+//   drawPlate();
+//   stk.pop();
+// }
+
+/* ──────────────────────────────────────────
+   두 손 위치를 받아 바벨을 그리는 함수
+───────────────────────────────────────────*/
+function drawBarbell(L, R) {
+  // ① 월드 좌표에서 두 손의 위치 추출
+  const pL = glMatrix.vec3.fromValues(L[12], L[13], L[14]);
+  const pR = glMatrix.vec3.fromValues(R[12], R[13], R[14]);
+
+  // ② 방향·길이 계산
+  const dir = glMatrix.vec3.create();
+  glMatrix.vec3.subtract(dir, pR, pL); // R - L
+  const len = glMatrix.vec3.length(dir); // 봉 길이
+  glMatrix.vec3.scale(dir, dir, 1 / len); // 정규화
+
+  // ③ 가운데(봉의 중심) 좌표
+  const mid = glMatrix.vec3.create();
+  glMatrix.vec3.add(mid, pL, pR);
+  glMatrix.vec3.scale(mid, mid, 0.5);
+
+  /* ④ [0,1,0] → dir 로 향하도록 회전행렬 만들기
+        (봉 geometry 는 기본적으로 +Y 축을 따라 있으므로)           */
+  const up = [0, 1, 0];
+  const axis = glMatrix.vec3.create();
+  glMatrix.vec3.cross(axis, up, dir);
+  const axisLen = glMatrix.vec3.length(axis);
+
+  const stkTop = stk.stack.length; // 디버깅용 체크포인트
+  stk.push();
+  // ─ 위치
+  mat4.translate(stk.current, stk.current, mid);
+
+  // ─ 방향 맞추기 (up 과 dir 가 거의 평행/역평행일 때 예외처리)
+  if (axisLen > 1e-5) {
+    const ang = Math.acos(
+      Math.min(Math.max(glMatrix.vec3.dot(up, dir), -1), 1)
+    );
+    glMatrix.vec3.scale(axis, axis, 1 / axisLen);
+    mat4.rotate(stk.current, stk.current, ang, axis);
+  } else if (glMatrix.vec3.dot(up, dir) < 0) {
+    // 완전히 반대 방향 : 아무 축이나 잡고 180°
+    mat4.rotate(stk.current, stk.current, Math.PI, [1, 0, 0]);
+  }
+
+  // ─ 길이 맞추기 (봉 height 가 2.0 이므로 len/2 로 스케일)
+  mat4.scale(stk.current, stk.current, [1, len, 1]);
+  drawBar(); // 봉
+
+  stk.pop();
+
+  /* ⑤ 원판 2개 : 봉 끝에서 0.05 안쪽(두께의 절반) 위치 */
+  const plateOffset = len - 0.05;
+  [1, -1].forEach((sign) => {
+    stk.push();
+    // 봉 중심 → 끝쪽으로 이동
+    mat4.translate(stk.current, stk.current, mid);
+    // 같은 회전 적용
+    if (axisLen > 1e-5) {
+      const ang = Math.acos(
+        Math.min(Math.max(glMatrix.vec3.dot(up, dir), -1), 1)
+      );
+      mat4.rotate(stk.current, stk.current, ang, axis);
+    } else if (glMatrix.vec3.dot(up, dir) < 0) {
+      mat4.rotate(stk.current, stk.current, Math.PI, [1, 0, 0]);
+    }
+    // 끝 방향으로 offset
+    mat4.translate(stk.current, stk.current, [0, sign * plateOffset, 0]);
+    drawPlate(); // 단일 VAO 로 만든 동심원 원판
+    stk.pop();
+  });
+
+  // 디버그용 안전장치
+  if (stk.stack.length !== stkTop)
+    console.warn("Matrix stack leak in drawBarbell!");
+}
+
 function character(p) {
   stk.push();
   body();
   head(p.HEAD_TILT);
-  arm("left", p.LEFT_SHOULDER, p.LEFT_ELBOW, p.RIGHT_ARM_SX);
-  arm("right", p.RIGHT_SHOULDER, p.RIGHT_ELBOW, p.RIGHT_ARM_SX);
+
+  const leftHandM = arm("left", p.LEFT_SHOULDER, p.LEFT_ELBOW, p.RIGHT_ARM_SX);
+  const rightHandM = arm(
+    "right",
+    p.RIGHT_SHOULDER,
+    p.RIGHT_ELBOW,
+    p.RIGHT_ARM_SX
+  );
   leg("left", p.LEFT_HIP, p.LEFT_KNEE);
   leg("right", p.RIGHT_HIP, p.RIGHT_KNEE);
   stk.pop();
+
+  return { leftHandM, rightHandM };
 }
 
 /*=======================
@@ -374,18 +574,18 @@ const deg = (a) => (a * Math.PI) / 180;
 const startPose = {
   BODY_LEAN_X: deg(0),
   BODY_LEAN_Y: deg(0),
-  BODY_LEAN_Z: deg(30),
+  BODY_LEAN_Z: deg(0),
   HEAD_TILT: deg(-15),
 
-  LEFT_SHOULDER: deg(100),
-  RIGHT_SHOULDER: deg(-80),
-  LEFT_ELBOW: deg(15),
-  RIGHT_ELBOW: deg(-125),
+  LEFT_SHOULDER: deg(180),
+  RIGHT_SHOULDER: deg(180),
+  LEFT_ELBOW: deg(0),
+  RIGHT_ELBOW: deg(0),
 
-  LEFT_HIP: deg(-60),
-  RIGHT_HIP: deg(-30),
-  LEFT_KNEE: deg(-70),
-  RIGHT_KNEE: deg(-30),
+  LEFT_HIP: deg(-40),
+  RIGHT_HIP: deg(50),
+  LEFT_KNEE: deg(-10),
+  RIGHT_KNEE: deg(-55),
 };
 
 const endPose = {
@@ -405,7 +605,7 @@ const endPose = {
   RIGHT_KNEE: deg(-70),
 };
 
-const SX_START = -0.3; // 처음엔 몸 안쪽
+const SX_START = -0.2; // 처음엔 몸 안쪽
 const SX_END = 0.3; // –160° 도달 시 바깥쪽
 const SHOULDER_LIMIT = deg(-160);
 
@@ -520,7 +720,7 @@ function resize() {
 // }
 
 const DURATION = 1000; // 1초에 목표 포즈 도달
-const LOOP = true; // true 면 계속 왕복, false 면 1회 후 멈춤
+const LOOP = false; // true 면 계속 왕복, false 면 1회 후 멈춤
 let startTime = null;
 
 function render(now) {
@@ -529,14 +729,15 @@ function render(now) {
 
   // --- t 계산 -----------------------------
   let t = elapsed / DURATION;
-  if (LOOP) {
-    // ping-pong: 0→1→0→1 …
-    const cycle = Math.floor(t);
-    t = t - cycle; // 0~1 사이
-    if (cycle % 2 === 1) t = 1 - t; // 홀수 cycle 때 역방향
-  } else {
-    t = Math.min(t, 1); // 0~1 clamp
-  }
+  // if (LOOP) {
+  //   // ping-pong: 0→1→0→1 …
+  //   const cycle = Math.floor(t);
+  //   t = t - cycle; // 0~1 사이
+  //   if (cycle % 2 === 1) t = 1 - t; // 홀수 cycle 때 역방향
+  // } else {
+  //   t = Math.min(t, 1); // 0~1 clamp
+  // }
+  t = 0;
 
   // --- pose 보간 --------------------------
   const pose = interpolatePose(t);
@@ -556,14 +757,24 @@ function render(now) {
   mat4.rotate(stk.current, stk.current, pose.BODY_LEAN_Z, [0, 0, 1]);
 
   // 캐릭터 그릴 때 pose 값 넘기기
-  character(pose); // ✨(아래 4단계 참고)
+  const { leftHandM, rightHandM } = character(pose); // ✨(아래 4단계 참고)
 
-  stk.push();
-  stk.loadIdentity();
-  const ballPos = interpolateBall(t);
-  mat4.translate(stk.current, stk.current, ballPos);
-  drawBall();
-  stk.pop();
+  // stk.push();
+
+  // /* ① 바벨을 머리 위 Y=2.4 정도 높이 */
+  // mat4.translate(stk.current, stk.current, [0, 2.4, 0]);
+
+  // /* ② 선수의 오른손이 뒤로 간 상태라면 살짝 Z 앞으로 */
+  // mat4.translate(stk.current, stk.current, [0, 0, -0.4]);
+
+  // /* ③ 회전(필요 시) */
+  // mat4.rotateX(stk.current, stk.current, deg(90)); // 손등 앞쪽으로 오도록
+
+  // drawBarbell(leftHandM, rightHandM); // 🎉 호출
+
+  // stk.pop();
+
+  drawBarbell(leftHandM, rightHandM); // 🎉 호출
 
   requestAnimationFrame(render);
 }
